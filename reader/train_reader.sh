@@ -4,7 +4,7 @@ EXPT_NAME=$3
 MODEL_NAME=$4
 OUTDIR=$5
 
-python train_reader.py \
+python reader/train_reader.py \
         --train_data $train_data_path \
         --eval_data $eval_data_path \
         --model_size base \
