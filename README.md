@@ -23,5 +23,3 @@ bash run_data_preprocessing_dpr.sh structure all
 
 
 cd scripts
-
-
