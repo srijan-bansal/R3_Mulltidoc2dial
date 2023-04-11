@@ -13,7 +13,10 @@ bash run_download.sh
 
 bash run_data_preprocessing.sh structure grounding
 bash run_data_preprocessing.sh structure generation
-bash run_data_preprocessing_dpr.sh structure all
+
+
+bash run_data_preprocessing_dpr.sh structure all 
+
 
 
 
