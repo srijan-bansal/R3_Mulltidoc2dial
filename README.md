@@ -3,12 +3,10 @@ This is the implementation for our paper R3 : Refined Retriever-Reader pipeline 
 
 git clone https://github.com/srijan-bansal/R3_Mulltidoc2dial.git
 
-cd R3_Mulltidoc2dial
+cd R3_Mulltidoc2dial/multidoc2dial
 
-cd multidoc2dial
 conda activate conda_env.yml
 
-export HF_HOME=`cache/`
 
 <!-- export `CHECKPOINTS` for -->
 

@@ -1,0 +1,3 @@
+[submodule "multidoc2dial"]
+	path = multidoc2dial
+	url =https://github.com/IBM/multidoc2dial.git
