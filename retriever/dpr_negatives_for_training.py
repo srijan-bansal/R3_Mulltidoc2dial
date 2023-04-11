@@ -15,6 +15,7 @@ def get_args():
     parser.add_argument('--base_dir', default="../data/beir_format/", help='path to the directory containing the data. We assume the presence of mdd_dpr in this directory')
     parser.add_argument('--dump_dir', default='../data/dpr_negatives_beir_format/', help='path to the directory containing the data. We assume the presence of mdd_dpr in this directory')
     parser.add_argument('--batch_size', type=int, default=128, help='batch size for inference')
+    parser.add_argument('--k_values', type=int, default=20, help='number of retrieved documents per example')
 
     args = parser.parse_args()
     return args
@@ -40,7 +41,7 @@ def main():
     corpus, queries, qrels = GenericDataLoader(
         args.base_dir).load(split="train")
         
-    retriever = EvaluateRetrieval(model, score_function="dot", k_values=[20]) # retriever retrieves topk +1 for some reason
+    retriever = EvaluateRetrieval(model, score_function="dot", k_values=[20])
     results = retriever.retrieve(corpus, queries)
 
     os.makedirs(args.dump_dir, exist_ok=True)
