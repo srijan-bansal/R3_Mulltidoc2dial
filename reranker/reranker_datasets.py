@@ -165,7 +165,7 @@ class EfficientQARerankerDatasetForBaselineReranker_TRAIN(data.Dataset):
 
         support_list = []
         ground_truth_doc = self.pids[idx]
-        shuffle_indices = list(self.psg_predictions[idx].split('\t'))
+        shuffle_indices = self.psg_predictions[idx]
         if ground_truth_doc in shuffle_indices:
             shuffle_indices.remove(ground_truth_doc)
 
@@ -241,7 +241,7 @@ class EfficientQARerankerDatasetForBaselineReranker_VAL(data.Dataset):
 
     def __getitem__(self, idx):
         query = self.queries[idx]
-        psg_indices = list(self.psg_predictions[idx].split('\t'))
+        psg_indices = self.psg_predictions[idx]
         passages = [self._get_raw_doc(idx) for idx in psg_indices[:self.batch_size]]
 
         batch = self.query_builder(query, passages, False)

@@ -29,8 +29,8 @@ import numpy as np
 def build_parser():
     parser = argparse.ArgumentParser(description='Passages Reranker training process.')
     parser.add_argument("--config", default=None, help="")
-    parser.add_argument("--train", default="../../data/mdd_all/train.source", help="train dataset")
-    parser.add_argument("--val", default="../../data/mdd_all/val.source", help="validation dataset")
+    parser.add_argument("--train", default="../data/mdd_all/train.source", help="train dataset")
+    parser.add_argument("--val", default="../data/mdd_all/val.source", help="validation dataset")
     parser.add_argument("--encoder", default="roberta-base", help="name or path to encoder")
     parser.add_argument("--cache_dir", default=None, help="cache directory")
     parser.add_argument("--max_length", default=512, type=int, help="maximum length of the input sequence")
@@ -115,9 +115,9 @@ def train(args):
     
     train_dataloader = None
     if not evaluate:
-        train_dataset = EfficientQARerankerDatasetForBaselineReranker_TRAIN(args["all_doc"], args["train_source"], args["train_qid"], args["train_psg"], tokenizer, query_builder, args["train_batch_size"])
+        train_dataset = EfficientQARerankerDatasetForBaselineReranker_TRAIN(args["all_doc"], args["train_source"], args["train_qid"], args["train_psg"], args["train_gold_pids"], tokenizer, query_builder, args["train_batch_size"])
         train_dataloader = get_dataloader_for_baseline_reranker(train_dataset, random_sampler=True)
-    if args["test_source"] is not None:
+    if "test_source" in args and args["test_source"] is not None:
         val_dataset = EfficientQARerankerDatasetForBaselineReranker_VAL(args["all_doc"], args["test_source"], args["test_qid"], args["test_psg"], query_builder, args["no_passages"])
     else:
         val_dataset = EfficientQARerankerDatasetForBaselineReranker_VAL(args["all_doc"], args["val_source"], args["val_qid"], args["val_psg"], query_builder, args["no_passages"], args["val_gold_pids"])
@@ -136,9 +136,7 @@ def train(args):
     
     model = BaselineReranker(config, encoder)
     if evaluate:
-        model_state_dict = framework.load_model(args['ckpt_path']).state_dict()
-        if hasattr(model, 'module') :
-           model_state_dict = model_state_dict.module
+        model_state_dict = framework.load_model(args['ckpt_path'])
         model.load_state_dict(model_state_dict)
     model = nn.DataParallel(model)
     model = model.to(device)
@@ -182,17 +180,17 @@ def train(args):
                         
         LOGGER.info("Training completed.")
     
-        LOGGER.info("Evaluation started")
-        framework.validate(model,val_dataloader)
-        LOGGER.info("Validation completed.")
+    LOGGER.info("Evaluation started")
+    framework.validate(model,val_dataloader,args["eval_batch_size"])
+    LOGGER.info("Validation completed.")
 
-        LOGGER.info("Training Inference started")
-        train_dataset = EfficientQARerankerDatasetForBaselineReranker_VAL(args["all_doc"], args["train_source"], args["train_qid"], args["train_psg"], query_builder, args["no_passages"], args["train_gold_pids"])
-        train_dataloader = get_dataloader_for_baseline_reranker(train_dataset, random_sampler=False)
-        framework.inference(model, train_dataloader, mode="train")
+    LOGGER.info("Training Inference started")
+    train_dataset = EfficientQARerankerDatasetForBaselineReranker_VAL(args["all_doc"], args["train_source"], args["train_qid"], args["train_psg"], query_builder, args["no_passages"], args["train_gold_pids"])
+    train_dataloader = get_dataloader_for_baseline_reranker(train_dataset, random_sampler=False)
+    framework.inference(model, train_dataloader, args["eval_batch_size"], mode="train")
     
     LOGGER.info("Inference started")
-    framework.inference(model, val_dataloader, mode="dev")
+    framework.inference(model, val_dataloader,args["eval_batch_size"], mode="dev")
     
 
 

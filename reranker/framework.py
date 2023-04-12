@@ -1,3 +1,4 @@
+from json import load
 import random
 import time
 import traceback
@@ -133,7 +134,10 @@ class RerankerFramework(object):
         for it, batch in iter_:
             update = False
             try:
-                data = {key: values.to(self.device) for key, values in batch.items()}
+                data = {key: values for key, values in batch.items()}
+                for key in data:
+                    if key != 'qid': data[key] = data[key].to(self.device)
+
                 logits = model(data)
 
                 loss = criterion(logits, data["labels"]) / iter_size
@@ -211,8 +215,9 @@ class RerankerFramework(object):
     @torch.no_grad()
     def validate(self, model, dataloader, eval_batch_size):
         model.eval()
+        no_passages = dataloader.dataset.passages_in_batch
         # assuming there are more than 50 passages
-        hits_k = [1, 2, 5, 10, 25, 50, dataloader.dataset.passages_in_batch]
+        hits_k = [1, 2, 5, 10, 25, 50, no_passages]
         hits_sum = [0 for _ in hits_k]
 
         iter_ = tqdm.tqdm(enumerate(dataloader, 1), desc="[EVAL]", total=len(dataloader))
@@ -220,16 +225,15 @@ class RerankerFramework(object):
         for it, data in iter_:
             batch = {key: data[key].to(self.device) for key in ["input_ids", "attention_mask"]}
             batch_scores = []
-            for i in range(0, dataloader.dataset.passages_in_batch, eval_batch_size):
-                cur_batch = {'input_ids' : batch['input_ids'][cur_batch : cur_batch + eval_batch_size], 
-                             'attention_mask' : batch['attention_mask'][cur_batch : cur_batch + eval_batch_size]}
-                cur_batch_scores = model.module(batch).squeeze(0)
+            for i in range(0, no_passages, eval_batch_size):
+                cur_batch = {'input_ids' : batch['input_ids'][i : min(i + eval_batch_size, no_passages)], 
+                             'attention_mask' : batch['attention_mask'][i : min(i + eval_batch_size, no_passages)]}
+                cur_batch_scores = model.module(cur_batch).squeeze(0)
                 cur_batch_scores = cur_batch_scores[cur_batch_scores != float("-Inf")]
                 batch_scores.extend(cur_batch_scores.detach().cpu().numpy().tolist())
 
             psgs = data["psg_predictions"]
-            top_k = batch_scores.shape[0]
-            batch_scores = batch_scores.cpu().numpy().tolist()
+            top_k = len(batch_scores)
             score_map = [(psgs[i], batch_scores[i]) for i in range(top_k)]
             score_map = sorted(score_map, key=lambda tup: -tup[1])
             hit_rank = -1
@@ -255,7 +259,7 @@ class RerankerFramework(object):
             output_file_name = "rerank_{mode}_predictions.tsv"
 
         model.eval()
-
+        no_passages = dataloader.dataset.passages_in_batch
         iter_ = tqdm.tqdm(enumerate(dataloader, 1), desc="[EVAL]", total=len(dataloader))
         qids = []
         pids = []
@@ -264,21 +268,20 @@ class RerankerFramework(object):
         for it, data in iter_:
             batch = {key: data[key].to(self.device) for key in ["input_ids", "attention_mask"]}
             batch_scores = []
-            for i in range(0, dataloader.dataset.passages_in_batch, eval_batch_size):
-                cur_batch = {'input_ids' : batch['input_ids'][cur_batch : cur_batch + eval_batch_size], 
-                             'attention_mask' : batch['attention_mask'][cur_batch : cur_batch + eval_batch_size]}
-                cur_batch_scores = model.module(batch).squeeze(0)
+            for i in range(0, no_passages, eval_batch_size):
+                cur_batch = {'input_ids' : batch['input_ids'][i : min(i + eval_batch_size, no_passages)], 
+                             'attention_mask' : batch['attention_mask'][i : min(i + eval_batch_size, no_passages)]}
+                cur_batch_scores = model.module(cur_batch).squeeze(0)
                 cur_batch_scores = cur_batch_scores[cur_batch_scores != float("-Inf")]
                 batch_scores.extend(cur_batch_scores.detach().cpu().numpy().tolist())
 
             psgs = data["psg_predictions"]
-            top_k = batch_scores.shape[0]
-            batch_scores = batch_scores.cpu().numpy().tolist()
+            top_k = len(batch_scores)
             score_map = [(psgs[i], batch_scores[i]) for i in range(top_k)]
             score_map = sorted(score_map, key=lambda tup: -tup[1])
             scores.extend([x[1] for x in score_map])
             pids.extend([x[0] for x in score_map])
-            qids.extend([str(data['qid']) for x in score_map ])
+            qids.extend([str(data['qid']) for x in score_map])
         df = pd.DataFrame.from_dict({
             'qid' : qids,
             'pid' : pids,
@@ -305,17 +308,16 @@ class RerankerFramework(object):
     @classmethod
     def save_model(cls, model, config, path):
         LOGGER.info(f"Save checkpoint '{path}'.")
-        dict_to_save = {}
-        dict_to_save["model"]  = model.state_dict()
-        dict_to_save["config"] = config
-
-        torch.save(dict_to_save, path)
+        if hasattr(model, 'module'):
+            torch.save(model.module.state_dict(), path)
+        else:
+            torch.save(model.state_dict(), path)
 
     @classmethod
-    def load_model(cls, path, device):
+    def load_model(cls, path):
         if os.path.isfile(path):
-            dict_to_load = torch.load(path, map_location=device)
+            state_dict = torch.load(path)
             LOGGER.info(f"Successfully loaded checkpoint '{path}'")
-            return dict_to_load["model"], dict_to_load["config"]
+            return state_dict
         else:
             raise Exception(f"No checkpoint found at '{path}'")
