@@ -6,15 +6,13 @@
 # Checkpoint setup
 download weights from https://github.com/naver/splade/tree/main/weights and paste the weights directory to splade_weights
 
-# Training
-training scripts are in training_scripts
-
+# Training scripts
 ```
 # Fine tuning
-bash train.sh
+bash scripts/train.sh
 
 # DPR negatives
-bash train_dpr_negatives.sh
+bash scripts/train_dpr_negatives.sh
 ```
 
 # Inference and Evaluation
@@ -28,3 +26,7 @@ For computing metrics, use
 ```
 run_eval.py
 ```
+
+
+
+## These scripts are based on https://github.com/naver/splade/tree/main

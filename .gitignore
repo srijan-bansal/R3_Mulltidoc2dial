@@ -127,3 +127,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+reranker/cache
+reranker/checkpoints
+reranker/logs
