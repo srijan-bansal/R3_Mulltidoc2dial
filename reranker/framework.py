@@ -8,7 +8,7 @@ import logging
 import transformers
 import torch
 import tqdm
-
+import pandas as pd
 from collections import Counter
 from torch.utils.data import DataLoader, RandomSampler
 
@@ -19,13 +19,15 @@ SEED = 1601640139674    # seed for deterministic shuffle of passages on longform
 
 class RerankerFramework(object):
     """ Passage reranker trainner """
-    def __init__(self, device, config, train_dataloader=None, val_dataloader=None):
+    def __init__(self, device, config, train_dataloader=None, val_dataloader=None, output_dev_file=None, output_train_file=None):
         self.LOGGER = logging.getLogger(self.__class__.__name__)
 
         self.device = device
         self.config = config
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
+        self.output_dev_file = output_dev_file
+        self.output_train_file = output_train_file
 
     def train(self,
               model,
@@ -38,13 +40,16 @@ class RerankerFramework(object):
               weight_decay_rate=0.01,
               no_decay=['bias', 'gamma', 'beta', 'LayerNorm.weight'],
               fp16=False,
-              criterion=None
+              criterion=None,
+              eval_freq=5000,
+              eval_batch_size=32
             ):
         # Add trainig configuration       
         self.config["training"] = {}
         self.config["training"]["num_epoch"] = num_epoch
         self.config["training"]["lr"] = learning_rate
         self.config["training"]["train_batch_size"] = batch_size
+        self.config["training"]["eval_batch_size"] = eval_batch_size
         self.config["training"]["iter_size"] = iter_size
         self.config["training"]["warmup_proportion"] = warmup_proportion
         self.config["training"]["weight_decay_rate"] = weight_decay_rate
@@ -69,7 +74,7 @@ class RerankerFramework(object):
 
         if not criterion:
             criterion = torch.nn.CrossEntropyLoss()
-
+        
         num_training_steps = int(len(self.train_dataloader.dataset) / (iter_size) * num_epoch)
         num_warmup_steps = int(num_training_steps * warmup_proportion)
         scheduler = transformers.get_linear_schedule_with_warmup(
@@ -87,9 +92,9 @@ class RerankerFramework(object):
             for epoch in range(1, num_epoch+1):
                 LOGGER.info(f"Epoch {epoch} started.")
 
-                self.train_epoch(model, optimizer, scheduler, criterion, epoch, iter_size, batch_size, fp16, save_ckpt)
+                self.train_epoch(model, optimizer, scheduler, criterion, epoch, iter_size, batch_size, eval_batch_size, fp16, save_ckpt, eval_freq)
 
-            metrics = self.validate(model, self.val_dataloader, criterion)
+            metrics = self.validate(model, self.val_dataloader, eval_batch_size)
 
             for key, value in metrics.items():
                 LOGGER.info("Validation after '%i' iterations.", self.iter)
@@ -100,9 +105,9 @@ class RerankerFramework(object):
                 self.best_val_accuracy = metrics["HIT@25"]
 
             if save_ckpt:
-                self.save_model(model, self.config, optimizer, scheduler,
-                                save_ckpt+f"_HIT@25_{metrics['HIT@25']}.ckpt")
-
+                ckpt_path = f"{save_ckpt}_HIT@50_{metrics['HIT@50']}.ckpt"
+                self.save_model(model, self.config, ckpt_path)
+        
         except KeyboardInterrupt:
             LOGGER.info('Exit from training early.')
         except:
@@ -110,8 +115,8 @@ class RerankerFramework(object):
         finally:
             LOGGER.info('Finished after {:0.2f} minutes.'.format((time.time() - start_time) / 60))
 
-    def train_epoch(self, model, optimizer, scheduler, criterion, epoch, 
-                    iter_size, batch_size, fp16, save_ckpt):
+    def train_epoch(self, model, optimizer, scheduler, criterion, 
+                    epoch, iter_size, batch_size, eval_batch_size, fp16, save_ckpt, eval_freq):
         model.train()
 
         train_loss = 0
@@ -153,9 +158,9 @@ class RerankerFramework(object):
                     optimizer.zero_grad()
                     update = True
                     self.iter += 1
+                    if self.iter % eval_freq == 0:
+                        metrics = self.validate(model, self.val_dataloader, eval_batch_size)
 
-                    if self.iter % 5000 == 0:
-                        metrics = self.validate(model, self.val_dataloader, criterion)
 
                         for key, value in metrics.items():
                             LOGGER.info(f"Validation {key} after {self.iter} iteration: {value:.4f}")
@@ -204,39 +209,82 @@ class RerankerFramework(object):
         sys.stdout.flush()
 
     @torch.no_grad()
-    def validate(self, model, dataloader):
+    def validate(self, model, dataloader, eval_batch_size):
         model.eval()
-
+        # assuming there are more than 50 passages
         hits_k = [1, 2, 5, 10, 25, 50, dataloader.dataset.passages_in_batch]
         hits_sum = [0 for _ in hits_k]
 
         iter_ = tqdm.tqdm(enumerate(dataloader, 1), desc="[EVAL]", total=len(dataloader))
-        output_file = open('rerank_seen_test_predictions.txt', 'w')
+
         for it, data in iter_:
             batch = {key: data[key].to(self.device) for key in ["input_ids", "attention_mask"]}
-            batch_scores = model(batch)
-            batch_scores = batch_scores.view(-1)
-            batch_scores = batch_scores[batch_scores != float("-Inf")]
+            batch_scores = []
+            for i in range(0, dataloader.dataset.passages_in_batch, eval_batch_size):
+                cur_batch = {'input_ids' : batch['input_ids'][cur_batch : cur_batch + eval_batch_size], 
+                             'attention_mask' : batch['attention_mask'][cur_batch : cur_batch + eval_batch_size]}
+                cur_batch_scores = model.module(batch).squeeze(0)
+                cur_batch_scores = cur_batch_scores[cur_batch_scores != float("-Inf")]
+                batch_scores.extend(cur_batch_scores.detach().cpu().numpy().tolist())
+
             psgs = data["psg_predictions"]
             top_k = batch_scores.shape[0]
             batch_scores = batch_scores.cpu().numpy().tolist()
             score_map = [(psgs[i], batch_scores[i]) for i in range(top_k)]
             score_map = sorted(score_map, key=lambda tup: -tup[1])
-            # hit_rank = -1
-            # for hit_idx, (idx, _) in enumerate(score_map):
-            #     if idx == data['hits'][0]:
-            #         hit_rank = hit_idx
-            #         break
-            # for i, k in enumerate(hits_k):
-            #     hits_sum[i]+= 1 if -1 < hit_rank < k else 0
-            output_line = '\t'.join([psg for (psg, _) in score_map])
-            output_file.write(output_line+'\n')
-        output_file.close()
-        # for key, value in zip(hits_k, hits_sum):
-        #     print (f"HIT@{key}: {value/len(dataloader)}")
-        # return {
-        #     f"HIT@{key}": value/it for key, value in zip(hits_k, hits_sum)
-        # }
+            hit_rank = -1
+            for hit_idx, (idx, _) in enumerate(score_map):
+                if idx == data['hits'][0]:
+                    hit_rank = hit_idx
+                    break
+            for i, k in enumerate(hits_k):
+                hits_sum[i]+= 1 if -1 < hit_rank < k else 0
+        for key, value in zip(hits_k, hits_sum):
+            print (f"HIT@{key}: {value/len(dataloader)}")
+        return {
+            f"HIT@{key}": value/it for key, value in zip(hits_k, hits_sum)
+        }
+
+    @torch.no_grad()
+    def inference(self, model, dataloader, eval_batch_size, mode="dev"):
+        if mode == "dev":
+            output_file_name = self.output_dev_file
+        elif mode == "train":
+            output_file_name = self.output_train_file
+        else:
+            output_file_name = "rerank_{mode}_predictions.tsv"
+
+        model.eval()
+
+        iter_ = tqdm.tqdm(enumerate(dataloader, 1), desc="[EVAL]", total=len(dataloader))
+        qids = []
+        pids = []
+        scores = []
+
+        for it, data in iter_:
+            batch = {key: data[key].to(self.device) for key in ["input_ids", "attention_mask"]}
+            batch_scores = []
+            for i in range(0, dataloader.dataset.passages_in_batch, eval_batch_size):
+                cur_batch = {'input_ids' : batch['input_ids'][cur_batch : cur_batch + eval_batch_size], 
+                             'attention_mask' : batch['attention_mask'][cur_batch : cur_batch + eval_batch_size]}
+                cur_batch_scores = model.module(batch).squeeze(0)
+                cur_batch_scores = cur_batch_scores[cur_batch_scores != float("-Inf")]
+                batch_scores.extend(cur_batch_scores.detach().cpu().numpy().tolist())
+
+            psgs = data["psg_predictions"]
+            top_k = batch_scores.shape[0]
+            batch_scores = batch_scores.cpu().numpy().tolist()
+            score_map = [(psgs[i], batch_scores[i]) for i in range(top_k)]
+            score_map = sorted(score_map, key=lambda tup: -tup[1])
+            scores.extend([x[1] for x in score_map])
+            pids.extend([x[0] for x in score_map])
+            qids.extend([str(data['qid']) for x in score_map ])
+        df = pd.DataFrame.from_dict({
+            'qid' : qids,
+            'pid' : pids,
+            'score' : scores
+        })
+        df.to_csv(output_file_name, sep='\t', index=False)
     
     @torch.no_grad()
     def rerank(self, model, query_batch):
@@ -266,8 +314,8 @@ class RerankerFramework(object):
     @classmethod
     def load_model(cls, path, device):
         if os.path.isfile(path):
-            model = torch.load(path, map_location=device)
+            dict_to_load = torch.load(path, map_location=device)
             LOGGER.info(f"Successfully loaded checkpoint '{path}'")
-            return model["model"], model["config"]
+            return dict_to_load["model"], dict_to_load["config"]
         else:
             raise Exception(f"No checkpoint found at '{path}'")

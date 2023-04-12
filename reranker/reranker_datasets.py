@@ -8,7 +8,8 @@ import pickle
 
 import torch
 import torch.utils.data as data
-
+import pandas as pd
+from collections import defaultdict
 
 LOGGER = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class BaselineRerankerQueryBuilder(object):
         }
 
         return features
+
 def text2line(text):
     return text.replace("\n", " ").replace("\r", " ").replace("\t", " ").strip()
 
@@ -113,14 +115,26 @@ def split_text_section(spans, title):
         subtitles.append(parent_titles)
     return passages, subtitles
 
+def get_predicted_passages(pred_file, qids):
+    df = pd.read_table(pred_file)
+    pred_pids = list(df['pid'])
+    pred_qids = list(df['qid'])
+    assert (len(qids) == len(set(pred_qids)))
+    qid_map = defaultdict(list)
+    for qid, pid in zip(pred_qids, pred_pids):
+        qid_map[qid].append(pid)
+    return [qid_map[qid] for qid in qids]
+            
+
+
 class EfficientQARerankerDatasetForBaselineReranker_TRAIN(data.Dataset):
-    def __init__(self, query_filename, pred_filename, gold_pid_filename, tokenizer, query_builder, batch_size, negative_samples=None, shuffle_predicted_indices=False):
-        self.doc_data = json.load(open('../data/multidoc2dial/multidoc2dial_doc.json','r'))
+    def __init__(self, all_doc_filename, query_filename, query_id_filename, pred_filename, gold_pid_filename, tokenizer, query_builder, batch_size, shuffle_predicted_indices=False):
+        self.doc_data = json.load(open(all_doc_filename))
         self.queries = [line.strip() for line in open(query_filename, "r").readlines()]
-        self.psg_predictions = [line.strip().split("####")[-1] for line in open(pred_filename, "r").readlines()]
+        self.qids = [line.strip() for line in open(query_id_filename, "r").readlines()]
+        self.psg_predictions = get_predicted_passages(pred_filename, self.qids)
         self.pids = [line.strip() for line in open(gold_pid_filename, "r").readlines()]
         self.tokenizer = tokenizer
-        self.negative_samples = negative_samples
         self.shuffle_predicted_indices = shuffle_predicted_indices
         self.query_builder = query_builder
         self.batch_size = batch_size
@@ -170,6 +184,7 @@ class EfficientQARerankerDatasetForBaselineReranker_TRAIN(data.Dataset):
         features = self.query_builder(query, support_list, numerized=False)
         #assert support_list[0] == ground_truth_doc
         features["labels"] = torch.tensor([0])
+        features["qid"] = self.qids[idx]
         return features
 
     def _get_raw_doc(self, doc_id):
@@ -187,13 +202,16 @@ class EfficientQARerankerDatasetForBaselineReranker_TRAIN(data.Dataset):
         context = self.query_builder.tokenize_and_convert_to_ids(context)
         return (title, context)
 
-class EfficientQARerankerDatasetForBaselineReranker(data.Dataset):
+class EfficientQARerankerDatasetForBaselineReranker_VAL(data.Dataset):
 
-    def __init__(self, query_filename, pred_filename, gold_pid_filename, query_builder, batch_size):
-        self.doc_data = json.load(open('../data/multidoc2dial/multidoc2dial_doc.json','r'))
+    def __init__(self, all_doc_filename, query_filename, query_id_filename, pred_filename, query_builder, batch_size, gold_pid_filename=None):
+        self.doc_data = json.load(open(all_doc_filename))
         self.queries = [line.strip() for line in open(query_filename, "r").readlines()]
-        self.psg_predictions = [line.strip().split("####")[-1] for line in open(pred_filename, "r").readlines()]
-        #self.pids = [line.strip() for line in open(gold_pid_filename, "r").readlines()]
+        self.qids = [line.strip() for line in open(query_id_filename, "r").readlines()]
+        self.psg_predictions = get_predicted_passages(pred_filename, self.qids)
+        self.pids = None
+        if gold_pid_filename is not None:
+            self.pids = [line.strip() for line in open(gold_pid_filename, "r").readlines()]
         self.query_builder = query_builder
         self.batch_size = batch_size
         doc_passages = {}
@@ -227,8 +245,10 @@ class EfficientQARerankerDatasetForBaselineReranker(data.Dataset):
         passages = [self._get_raw_doc(idx) for idx in psg_indices[:self.batch_size]]
 
         batch = self.query_builder(query, passages, False)
-        #batch["hits"] = [self.pids[idx]]
+        if self.pids is not None:
+            batch["hits"] = [self.pids[idx]]
         batch["psg_predictions"] = psg_indices[:self.batch_size]
+        batch["qid"] = self.qids[idx]
         return batch
 
     def _get_raw_doc(self, doc_id):
@@ -241,8 +261,8 @@ class EfficientQARerankerDatasetForBaselineReranker(data.Dataset):
         return (title, context)
     
 class SingleQuery():
-    def __init__(self, query, pids, query_builder, batch_size=100):
-        self.doc_data = json.load(open('../data/multidoc2dial/multidoc2dial_doc.json','r'))
+    def __init__(self, all_doc_filename, query, pids, query_builder, batch_size=100):
+        self.doc_data = json.load(open(all_doc_filename))
         self.query = query
         self.query_builder = query_builder
         self.batch_size = batch_size

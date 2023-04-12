@@ -21,7 +21,7 @@ def get_reranker_model():
     device = torch.device("cuda:0")
     framework = RerankerFramework(device, model_config)
     model = BaselineReranker(config, encoder)
-    model = torch.load('/home/srijanb/Demo_M2D/reranker/reranker_1.ckpt')
+    model = torch.load('checkpoints/reranker_1.ckpt')
     model = model.to(device)
     model = model.module
     return model, query_builder, framework
