@@ -474,12 +474,8 @@ def main():
     else:
         if args.target_domain:
             args.included_domains = [ele for ele in DOMAINS if ele != args.target_domain]
-            
-            
-        splits = [args.split] if args.split else ["train", "validation", "test"]
-        for split in splits:
-            args.split = split
-            create_dpr_data(args)
+                        
+        create_dpr_data(args)
 
 if __name__ == "__main__":
     main()
