@@ -7,19 +7,16 @@ This is the implementation of our (team CMU_QA) submission to the [DialDoc 2023]
 clone this repository
 
 ```
-cd R3_Mulltidoc2dial/multidoc2dial
-conda activate conda_env.yml
-export HF_HOME=../../cache
+cd R3_Mulltidoc2dial
+conda activate multidoc2dial/conda_env.yml
 ```
 
 Download & Preprocess Multidoc2dial Dataset
 
 ```
-cd scripts
-bash run_download.sh
-bash run_data_preprocessing.sh structure grounding
-bash run_data_preprocessing.sh structure generation
-bash run_data_preprocessing_dpr.sh structure all 
+mkdir cache
+export HF_HOME=cache
+bash preprocess.sh
 ```
 
 Retriever 
