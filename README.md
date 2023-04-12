@@ -14,13 +14,16 @@ conda activate multidoc2dial/conda_env.yml
 Download & Preprocess Multidoc2dial Dataset
 
 ```
-mkdir cache
 export HF_HOME=cache
 bash preprocess.sh
 ```
 
 Retriever 
 ```
+# prepare retrieval training data
+
+python convert_md2d_train_data_to_splade.py
+python dpr_negatives_for_training.py
 
 ```
 
