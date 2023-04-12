@@ -78,12 +78,11 @@ def recall_at_k(qrels, results, k=10):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", required=True)
-    parser.add_argument("--model_path", default=None)
+    parser.add_argument("--model_name", choices=['dpr-ft', 'dpr-nq', 'tas-b', 'distilsplade', 'splade'])
+    parser.add_argument("--model_path", default=None, help='Checkpoint directory. If not mentioned, default models are loaded')
     parser.add_argument("--data_dir", default='../data/beir_format')
     parser.add_argument("--dump_dir", default='../data/retrieved_results')
     parser.add_argument("--split", default='validation', type=str)
-    parser.add_argument("--inference_only", default=False, type=bool)
     parser.add_argument("--k_values", default='10,100', type=str)
 
     args = parser.parse_args()
@@ -98,13 +97,11 @@ def main():
     data_dir = args.data_dir
     dump_dir = args.dump_dir
     split = args.split
-    inference_only = args.inference_only
 
     corpus, queries, qrels = GenericDataLoader(
         data_dir).load(split=split)
 
     print("lengths of queries, corpus, qrels:", len(queries), len(corpus), len(qrels))
-
 
     if "dpr-ft" in model_name:
         if model_path is None:
@@ -150,7 +147,7 @@ def main():
 
     elif "distilsplade" in model_name:
         if model_path is None:
-            model_type_or_dir = "/home/adityasv/COILv2/splade/weights/distilsplade_max"
+            model_type_or_dir = "splade_weights/distilsplade_max"
             model = Splade(model_type_or_dir)
             model.eval()
             tokenizer = AutoTokenizer.from_pretrained(model_type_or_dir)
@@ -166,7 +163,7 @@ def main():
 
     elif "splade" in model_name:
         if model_path is None:
-            model_type_or_dir = "/home/adityasv/COILv2/splade/weights/splade_max"
+            model_type_or_dir = "splade_weights/splade_max"
             model = Splade(model_type_or_dir)
             model.eval()
             tokenizer = AutoTokenizer.from_pretrained(model_type_or_dir)
@@ -191,17 +188,10 @@ def main():
 
     os.makedirs(dump_dir, exist_ok=True)
     with open(os.path.join(dump_dir, f'{model_name}-results.tsv'), 'w') as fo:
+        fo.write('\t'.join(["qid","pid","score"])+'\n')
         for query_id in results.keys():
             for doc_id, score in sorted(results[query_id].items(), key=lambda x: x[1], reverse=True):
-                fo.write(
-                    '\t'.join(list(map(str, [query_id, doc_id, score]))) + '\n')
-
-    if not inference_only:
-        _mrr = mrr(qrels, results, [10])
-        recall, not_retrieved = recall_at_k(qrels, results)
-
-        ndcg, _map, recall, precision, _mrr = evaluate(qrels, results, args.k_values)
-        print(ndcg, _map, recall, precision, _mrr)
+                fo.write('\t'.join(list(map(str, [query_id, doc_id, score]))) + '\n')
 
 if __name__ == "__main__":
     main()
