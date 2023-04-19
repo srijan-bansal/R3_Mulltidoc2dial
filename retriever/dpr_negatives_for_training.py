@@ -12,8 +12,8 @@ from models import BEIRDPR
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--base_dir', default="../data/beir_format/", help='path to the directory containing the data. We assume the presence of mdd_dpr in this directory')
-    parser.add_argument('--dump_dir', default='../data/dpr_negatives_beir_format/', help='path to the directory containing the data. We assume the presence of mdd_dpr in this directory')
+    parser.add_argument('--base_dir', default="data/beir_format/", help='path to the directory containing the data. We assume the presence of mdd_dpr in this directory')
+    parser.add_argument('--dump_dir', default='data/dpr_negatives_beir_format/', help='path to the directory containing the data. We assume the presence of mdd_dpr in this directory')
     parser.add_argument('--batch_size', type=int, default=128, help='batch size for inference')
     parser.add_argument('--k_values', type=int, default=20, help='number of retrieved documents per example')
 

@@ -5,7 +5,7 @@ from tqdm.auto import tqdm
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--base_dir', default='../data/', help='path to the directory containing the data. We assume the presence of mdd_dpr in this directory')
+    parser.add_argument('--base_dir', default='data/', help='path to the directory containing the data. We assume the presence of mdd_dpr in this directory')
 
     args = parser.parse_args()
     return args

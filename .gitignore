@@ -132,3 +132,12 @@ dmypy.json
 reranker/cache
 reranker/checkpoints
 reranker/logs
+
+retriever/.idea/
+retriever/*__pycache__
+retriever/.ipynb_checkpoints
+retriever/*.pkl
+retriever/output/
+retriever/msmarco-data/
+retriever/log/
+retriever/*.pyc
