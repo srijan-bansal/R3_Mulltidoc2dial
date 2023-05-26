@@ -49,7 +49,8 @@ bash retriever/scripts/eval.sh
  
 ### Reranker
 ```
-python
+cd reranker
+python train_reranker_m2d.py
 ```
 
 ### Reader
