@@ -5,13 +5,13 @@ from utils import setup_logging
 config = {
     "encoder": "roberta-base",
     "all_doc": "../data/multidoc2dial/multidoc2dial_doc.json",
-    "train_source": "../data/mdd_all/dd-generation-structure/val.source",
+    "train_source": "../data/mdd_all/dd-generation-structure/train.source",
     "val_source": "../data/mdd_all/dd-generation-structure/val.source", # replace with test for predictions
-    "train_qid": "../data/mdd_all/dd-generation-structure/val.qids",
+    "train_qid": "../data/mdd_all/dd-generation-structure/train.qids",
     "val_qid": "../data/mdd_all/dd-generation-structure/val.qids", # replace with test for predictions
-    "train_psg": "../data/retrieved_results/splade-results.tsv", # tsv output of retriever for train
-    "val_psg": "../data/retrieved_results/splade-results.tsv", # tsv output of retriever for val, replace with test for predictions
-    "train_gold_pids": "../data/mdd_all/dd-generation-structure/val.pids",
+    "train_psg": "../data/retrieved_results/train-splade-results.tsv", # tsv output of retriever for train
+    "val_psg": "../data/retrieved_results/val-splade-results.tsv", # tsv output of retriever for val, replace with test for predictions
+    "train_gold_pids": "../data/mdd_all/dd-generation-structure/train.pids",
     "val_gold_pids": "../data/mdd_all/dd-generation-structure/val.pids", # no need for test
     "checkpoint_dir": "checkpoints",
     "cache_dir": "cache",
@@ -28,7 +28,7 @@ config = {
     "output_dev_file" : "rerank_dev_predictions.tsv",
     "output_train_file" : "rerank_train_predictions.tsv",
     "evaluate" : True, # make this true for just test predictions
-    "ckpt_path" : "checkpoints/reranker_1.ckpt", # set to checkpoint path for prediction
+    #"ckpt_path" : "checkpoints/reranker_1.ckpt", # set to checkpoint path for prediction
     "eval_freq" : 2500 # almost equivalent to len(train) / iter_size (cover 1 epoch)
 }
 

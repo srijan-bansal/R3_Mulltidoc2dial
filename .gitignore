@@ -141,4 +141,4 @@ retriever/output/
 retriever/msmarco-data/
 retriever/log/
 retriever/*.pyc
-retriever/splade_weights
+retriever/splade_weights/
